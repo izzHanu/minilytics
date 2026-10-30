@@ -174,6 +174,22 @@ The Terms, Privacy and Refund pages (`/terms`, `/privacy`, `/refund`) are plain-
 - **Single-page apps** (Next.js, React Router…) are handled automatically
 - **Subdomains:** `app.yoursite.com` and `yoursite.com` share the same visitor, because the cookie is set on the root domain
 
+### Tracking AI crawlers
+
+See which AI bots read your site (GPTBot, ClaudeBot, PerplexityBot, OAI-SearchBot, ChatGPT-User, Claude-User, Meta, Bytespider…),
+which company runs them, and which pages they read, in the **AI bots** panel. Crawlers don't run JavaScript, so your server reports
+them: Settings → **Track AI crawlers** has ready snippets for Next.js, Express and Cloudflare Workers. Each sends:
+
+```bash
+curl -X POST https://YOUR-HOST/api/v1/crawls -H "Authorization: Bearer ml_..." -H "Content-Type: application/json" \
+  -d '{"url":"https://yoursite.com/pricing","user_agent":"<User-Agent header>","signature_agent":"<Signature-Agent header>"}'
+```
+
+Bots are grouped as AI training, AI search, AI assistant (fetched because a person asked), search engines, SEO tools, link previews and
+monitoring. Crawlers that do run the script (like Googlebot's renderer) are counted here too, never as visitors. Hits are stored per
+hour, bot and page, so heavy crawling stays small. Bot names come from the user agent and can be faked.
+People who click through from ChatGPT, Claude or Perplexity are regular visitors, under Channel → AI.
+
 ### Tracking a specific tweet / article
 
 X, Medium, LinkedIn and others hide which exact post sent someone; the referrer only says `t.co` or `medium.com`.
@@ -283,6 +299,7 @@ node scripts/smoke-hosted.mjs         # hosted-mode test (see the comment at the
 - `public/js/script.js`: the tracker, 9 KB (about 3.5 KB gzipped). It handles cookies, pageviews, engaged time, goals, outbound links and Dodo link tagging
 - `src/worker`: a Hono app on Cloudflare Workers that handles event ingestion, the Dodo webhook, the payments and goals API, and stats queries on D1 (SQLite)
 - `src/dashboard`: the React dashboard (Vite, Tailwind, Recharts), served as static files by the same Worker
+- `src/worker/crawls.ts`, `src/worker/lib/bots.ts`: crawler reporting API and the AI bot list
 - `migrations/`: the database schema
 
 ## Contributing
