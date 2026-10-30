@@ -3,7 +3,7 @@ import type { Site } from './api';
 /**
  * A copy-paste prompt for the site owner's coding AI (Claude Code, Cursor, Copilot…),
  * filled with this site's real values so the AI can install tracking and revenue attribution itself.
- * The API key and webhook secret are deliberately left out: the integration doesn't need them in code.
+ * The API key and webhook secret are deliberately left out: code reads the key from MINILYTICS_API_KEY instead.
  */
 export function buildAiPrompt(site: Site, origin: string): string {
   const script = `<script defer data-website-id="${site.id}" src="${origin}/js/script.js"></script>`;
@@ -46,6 +46,18 @@ Add data attributes to the most important calls-to-action (no JS needed), using 
 Optional details: data-ml-goal-plan="pro". From code: window.minilytics?.('goal', 'signup_completed', { plan: 'pro' }).
 Track at least: the main signup/get-started button(s), pricing-page plan buttons, and the checkout/buy button. Also fire window.minilytics?.('goal', 'signup_completed') after a successful signup.
 
+## Task 5 — Report AI crawlers (only if this project has server code)
+AI crawlers (GPTBot, ClaudeBot, PerplexityBot, ChatGPT-User…) don't run JavaScript, so the script can't see them. If this project has a server layer (Next.js proxy.ts/middleware.ts, Express/Fastify/Hono middleware, a Cloudflare Worker or Pages Function, Remix/SvelteKit/Nuxt server hooks…), add a tiny middleware that, for page requests whose user agent matches
+  /bot|crawl|spider|slurp|fetcher|ChatGPT|OAI-Search|Claude-|anthropic|Perplexity|Bytespider|meta-external|MistralAI|cohere|Diffbot|facebookexternalhit|WhatsApp|Google-|Lighthouse/i
+or that carry a Signature-Agent header, sends this WITHOUT delaying the response (event.waitUntil / ctx.waitUntil, or fire-and-forget with .catch(() => {})):
+  POST ${origin}/api/v1/crawls
+  Authorization: Bearer <process.env.MINILYTICS_API_KEY>
+  Content-Type: application/json
+  { "url": <full request URL>, "user_agent": <User-Agent header>, "signature_agent": <Signature-Agent header or null> }
+- Skip static files (images, scripts, styles, fonts) and API routes. Never block or change the response.
+- Read the key from the MINILYTICS_API_KEY environment variable (server-only, never exposed to the browser); add it to .env.example without a value. I'll set the real value myself.
+- Fully static sites with no server layer: skip this task and tell me.
+
 ## TypeScript
 If the project uses TypeScript, add a global declaration so calls type-check:
   declare global { interface Window { minilytics?: ((cmd: 'goal' | 'identify' | 'pageview', a?: any, b?: any) => void) & { attribution?: () => { ml_visitor_id?: string; ml_session_id?: string } } } }
@@ -53,12 +65,13 @@ Always call it with optional chaining (window.minilytics?.(...)) so pages never 
 
 ## Rules
 - Make minimal, focused changes that match the existing code style. Don't refactor unrelated code.
-- Don't hardcode secrets. None are needed for this setup.
+- Don't hardcode secrets. The only one is MINILYTICS_API_KEY for Task 5, read from the environment.
 - The script ignores localhost by default. To test locally add data-allow-localhost to the script tag temporarily (remove it before committing), or test on the deployed site.
 
 ## When you are done, reply with
 1. A list of every file you changed and why.
 2. Which checkout/payment code paths now send ml_visitor_id / ml_session_id (and any you could not find or were unsure about).
 3. Which goals you added and where.
-4. How I can verify: open the site, in DevTools → Network a POST to ${origin}/api/event returns 202, and the visit appears in my Minilytics dashboard within seconds.`;
+4. Whether you added crawler reporting (Task 5) and where, or why not.
+5. How I can verify: open the site, in DevTools → Network a POST to ${origin}/api/event returns 202, and the visit appears in my Minilytics dashboard within seconds.`;
 }
