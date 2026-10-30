@@ -4,6 +4,8 @@ import { siteOwnerActive } from './auth';
 import { getSite, type AppEnv, type Site } from './env';
 import { isOwnerVisit } from './owner';
 import { isBot, parseUA } from './lib/ua';
+import { classifyBot } from './lib/bots';
+import { recordBotHits } from './crawls';
 import { creditedSessionSql, dodoProductOfLink, learnDodoProducts } from './payments';
 
 const TYPES = new Set(['pageview', 'goal', 'outbound', 'ping', 'identify']);
@@ -59,7 +61,22 @@ export async function handleEvent(c: Context<AppEnv>) {
   if (!body || !isId(body.w) || !TYPES.has(body.t) || !isId(body.vid) || !isId(body.sid)) return c.body(null, 400);
 
   const ua = c.req.header('user-agent') ?? '';
-  if (isBot(ua)) return c.body(null, 202);
+  if (isBot(ua)) {
+    // A few crawlers run JavaScript (Googlebot renders pages, some AI agents use real browsers).
+    // Keep them out of visitor stats but count them as crawler visits.
+    const bot = body.t === 'pageview' ? classifyBot(ua, c.req.header('signature-agent')) : null;
+    if (bot && bot.category !== 'Other bot') {
+      const site = await getSite(c.env.DB, body.w);
+      let url: URL | null = null;
+      try {
+        url = new URL(body.u);
+      } catch {}
+      if (site && url && siteOwnerActive(c.env, site) && belongsTo(url.hostname, site.domain)) {
+        await recordBotHits(c.env.DB, site.id, [{ ...bot, path: normalizePath(url.pathname), ts: Date.now() }]);
+      }
+    }
+    return c.body(null, 202);
+  }
 
   const site = await getSite(c.env.DB, body.w);
   if (!site) return c.body(null, 404);
