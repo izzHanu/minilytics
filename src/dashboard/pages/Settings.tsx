@@ -189,6 +189,8 @@ window.minilytics('identify', { email: user.email, name: user.name });`}</Code>
 
       <CrawlerSetup site={site} origin={origin} />
 
+      <StatsApiSetup site={site} origin={origin} />
+
       <LinkBuilder domain={site.domain} />
 
       <Section title="General">
@@ -617,6 +619,34 @@ export default {
         </p>
       </div>
     </section>
+  );
+}
+
+function StatsApiSetup({ site, origin }: { site: Site; origin: string }) {
+  return (
+    <Section title="5. Stats API" desc="Read your numbers from your own servers: who's live right now and from where, today, this month, or any period.">
+      <div className="space-y-3 text-sm">
+        <Code label="Live + today + this month">{`curl ${origin}/api/v1/stats \\
+  -H "Authorization: Bearer ${site.api_key}"
+
+# Any dashboard period too: ?period=7d | 30d | 90d | 12m | yesterday | all
+#                       or ?period=custom&from=2026-10-01&to=2026-10-15
+# Only who's on the site right now: ${origin}/api/v1/live`}</Code>
+        <Code label="Response (shortened)">{`{
+  "live":  { "visitors": 8,
+             "countries": [{ "code": "IN", "name": "India", "visitors": 3 }, …],
+             "cities": [{ "city": "Mumbai", "country": "IN", "visitors": 1 }, …],
+             "pages": […], "sources": […], "devices": […] },
+  "today": { "visitors": 155, "sessions": 155, "pageviews": 308, "from": "…" },
+  "month": { "visitors": 5281, "sessions": 5281, "pageviews": 10484, "from": "…" }
+}`}</Code>
+        <p className="text-stone-500">
+          "Today" and "this month" start at midnight in this site's timezone ({site.timezone}; change it under General). Live numbers refresh every 10
+          seconds, today every minute and this month every 10 minutes, so polling often stays inside the free plan. The key can also record payments:
+          call this from your server, never from browser code.
+        </p>
+      </div>
+    </Section>
   );
 }
 

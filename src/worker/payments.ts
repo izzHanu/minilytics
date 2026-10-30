@@ -491,10 +491,18 @@ export async function handleStripeWebhook(c: Context<AppEnv>) {
   return c.json({ ok: true });
 }
 
+const keyCache = new Map<string, { site: Site | null; at: number }>();
+
 export async function siteFromApiKey(c: Context<AppEnv>): Promise<Site | null> {
   const key = c.req.header('authorization')?.replace(/^Bearer\s+/i, '');
-  if (!key) return null;
-  return c.env.DB.prepare('SELECT * FROM sites WHERE api_key = ?').bind(key).first<Site>();
+  if (!key || !/^ml_\w{8,64}$/.test(key)) return null;
+  // Polled APIs call this a lot; a rotated key stops working within a minute.
+  const hit = keyCache.get(key);
+  if (hit && Date.now() - hit.at < 60_000) return hit.site;
+  const site = await c.env.DB.prepare('SELECT * FROM sites WHERE api_key = ?').bind(key).first<Site>();
+  if (keyCache.size > 200) keyCache.clear();
+  keyCache.set(key, { site, at: Date.now() });
+  return site;
 }
 
 /**
