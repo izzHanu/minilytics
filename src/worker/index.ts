@@ -7,6 +7,7 @@ import { billingWebhook, checkout, planInfo } from './billing';
 import { passwordsMatch, randomId } from './lib/crypto';
 import { handleDodoWebhook, handleGoalApi, handlePaymentApi, handleStripeWebhook, learnDodoProducts, rematchPayments } from './payments';
 import { rememberOwnerDevice } from './owner';
+import { botStats, handleCrawlApi } from './crawls';
 import { breakdown, customers, funnel, makeCtx, overview, realtime, sparklines, visitorProfile, visitors, type FunnelStep } from './stats';
 
 const app = new Hono<AppEnv>();
@@ -21,6 +22,7 @@ app.post('/api/webhooks/dodo/:siteId', handleDodoWebhook);
 app.post('/api/webhooks/stripe/:siteId', handleStripeWebhook);
 app.post('/api/v1/payments', handlePaymentApi);
 app.post('/api/v1/goals', handleGoalApi);
+app.post('/api/v1/crawls', handleCrawlApi);
 
 // ---------- login
 
@@ -218,7 +220,7 @@ app.post('/api/sites/:id/rotate-key', async (c) => {
 app.delete('/api/sites/:id', async (c) => {
   const id = c.get('site').id;
   await c.env.DB.batch(
-    ['events', 'sessions', 'visitors', 'payments', 'funnels'].map((t) =>
+    ['events', 'sessions', 'visitors', 'payments', 'funnels', 'bot_hits'].map((t) =>
       c.env.DB.prepare(`DELETE FROM ${t} WHERE site_id = ?`).bind(id),
     ).concat(c.env.DB.prepare('DELETE FROM sites WHERE id = ?').bind(id)),
   );
@@ -256,6 +258,7 @@ app.post('/api/sites/:id/pending-payments', async (c) => {
 });
 app.post('/api/sites/:id/rematch', async (c) => c.json(await rematchPayments(c.env.DB, c.get('site'))));
 app.get('/api/sites/:id/realtime', async (c) => c.json(await realtime(c.env.DB, c.get('site'))));
+app.get('/api/sites/:id/bots', botStats);
 app.get('/api/sites/:id/customers', async (c) => c.json(await customers(makeCtx(c))));
 app.get('/api/sites/:id/visitors', async (c) => c.json(await visitors(makeCtx(c))));
 app.get('/api/sites/:id/visitors/:vid', async (c) =>

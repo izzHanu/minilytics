@@ -122,6 +122,12 @@ export function Settings({ siteId }: { siteId: string }) {
     });
   }, [siteId]);
 
+  // Links like /site/x/settings#crawlers jump to that section once it has rendered.
+  useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (site && id) document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  }, [site]);
+
   async function save(patch: Partial<Site>, msg = 'Saved') {
     setError('');
     try {
@@ -180,6 +186,8 @@ window.minilytics('identify', { email: user.email, name: user.name });`}</Code>
       </Section>
 
       <Revenue site={site} origin={origin} form={form} set={set} save={save} onKeyRotated={(api_key) => setSite({ ...site, api_key })} />
+
+      <CrawlerSetup site={site} origin={origin} />
 
       <LinkBuilder domain={site.domain} />
 
@@ -498,6 +506,120 @@ const PRESETS = [
 ];
 
 /** Build a tagged link per tweet / article, so each one shows up separately in Campaign. */
+// Cheap pre-filter for the site's server; the Minilytics API does the exact matching and ignores the rest.
+const BOT_FILTER = String.raw`/bot|crawl|spider|slurp|fetcher|ChatGPT|OAI-Search|Claude-|anthropic|Perplexity|Bytespider|meta-external|MistralAI|cohere|Diffbot|facebookexternalhit|WhatsApp|Google-|Lighthouse/i`;
+
+function CrawlerSetup({ site, origin }: { site: Site; origin: string }) {
+  const [tab, setTab] = useState<'next' | 'node' | 'cloudflare' | 'test'>('next');
+  const endpoint = `${origin}/api/v1/crawls`;
+  const report = (indent: string, url: string, ua: string, sig: string) =>
+    `fetch('${endpoint}', {
+${indent}  method: 'POST',
+${indent}  headers: { Authorization: \`Bearer \${process.env.MINILYTICS_API_KEY}\`, 'Content-Type': 'application/json' },
+${indent}  body: JSON.stringify({ url: ${url}, user_agent: ${ua}, signature_agent: ${sig} }),
+${indent}}).catch(() => {})`;
+
+  const snippets = {
+    next: {
+      label: 'proxy.ts (Next.js 16+; middleware.ts on older versions)',
+      code: `import { NextResponse, type NextFetchEvent, type NextRequest } from 'next/server';
+
+const BOTS = ${BOT_FILTER};
+
+// On Next.js 15 and older: name this file middleware.ts and the function \`middleware\`.
+export function proxy(req: NextRequest, event: NextFetchEvent) {
+  const ua = req.headers.get('user-agent') ?? '';
+  const sig = req.headers.get('signature-agent');
+  if (BOTS.test(ua) || sig) {
+    // waitUntil: reported after the response, so crawlers never wait on it
+    event.waitUntil(
+      ${report('      ', 'req.url', 'ua', 'sig')},
+    );
+  }
+  return NextResponse.next();
+}
+
+// Pages only: skip images, scripts and other files.
+export const config = { matcher: ['/((?!_next/|api/|.*\\\\.[a-zA-Z0-9]+$).*)'] };`,
+    },
+    node: {
+      label: 'Express / Node.js',
+      code: `const BOTS = ${BOT_FILTER};
+
+// Add before your routes. Doesn't slow down the response.
+app.use((req, res, next) => {
+  const ua = req.get('user-agent') ?? '';
+  const sig = req.get('signature-agent');
+  if (req.method === 'GET' && (BOTS.test(ua) || sig) && !/\\.[a-z0-9]+$/i.test(req.path)) {
+    ${report('    ', "`https://${req.hostname}${req.originalUrl}`", 'ua', 'sig ?? null')};
+  }
+  next();
+});`,
+    },
+    cloudflare: {
+      label: 'Cloudflare Worker in front of your site',
+      code: `// Only for sites already served through a Worker or Pages Functions.
+// Don't add a Worker route on a busy site just for this: every request then counts
+// toward the free plan's 100,000 Worker requests a day.
+const BOTS = ${BOT_FILTER};
+
+export default {
+  async fetch(request, env, ctx) {
+    const ua = request.headers.get('user-agent') ?? '';
+    const sig = request.headers.get('signature-agent');
+    if (BOTS.test(ua) || sig) {
+      ctx.waitUntil(fetch('${endpoint}', {
+        method: 'POST',
+        headers: { Authorization: \`Bearer \${env.MINILYTICS_API_KEY}\`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: request.url, user_agent: ua, signature_agent: sig }),
+      }).catch(() => {}));
+    }
+    return fetch(request);
+  },
+};`,
+    },
+    test: {
+      label: 'Test it',
+      code: `curl -X POST ${endpoint} \\
+  -H "Authorization: Bearer ${site.api_key}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"url":"https://${site.domain}/","user_agent":"Mozilla/5.0 (compatible; GPTBot/1.2; +https://openai.com/gptbot)"}'
+# → {"ok":true,"recorded":1,...}   It shows up under AI bots → GPTBot.`,
+    },
+  } as const;
+
+  return (
+    <section id="crawlers" className="card scroll-mt-6 p-6">
+      <h2 className="text-lg font-semibold">4. Track AI crawlers</h2>
+      <p className="mt-1 text-sm text-stone-500">
+        See which AI companies read {site.domain} (GPTBot, ClaudeBot, PerplexityBot, ChatGPT-User…) and which pages they read. Crawlers don't run
+        JavaScript, so the script can't see them: your server reports them instead. People who click through from ChatGPT, Claude or Perplexity
+        are already tracked as visitors under Channel → AI.
+      </p>
+      <div className="mt-4 space-y-4 text-sm">
+        <div>
+          <p className="mb-2">
+            Add your API key to your site's server environment as <code>MINILYTICS_API_KEY</code> (keep it out of browser code):
+          </p>
+          <CopyField value={site.api_key} />
+        </div>
+        <div className="tabs overflow-x-auto">
+          {(['next', 'node', 'cloudflare', 'test'] as const).map((t) => (
+            <button key={t} className={`tab whitespace-nowrap ${tab === t ? 'tab-active' : ''}`} onClick={() => setTab(t)}>
+              {t === 'next' ? 'Next.js' : t === 'node' ? 'Express / Node' : t === 'cloudflare' ? 'Cloudflare Worker' : 'Test'}
+            </button>
+          ))}
+        </div>
+        <Code label={snippets[tab].label}>{snippets[tab].code}</Code>
+        <p className="text-stone-500">
+          Each crawler page view is one request to Minilytics, and repeat visits to the same page in the same hour share one database row, so
+          normal crawling stays well inside the free plan. User agents can be faked, so treat bot names as self-reported.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 function LinkBuilder({ domain }: { domain: string }) {
   const [url, setUrl] = useState(`https://${domain}/`);
   const [preset, setPreset] = useState(PRESETS[0]);
