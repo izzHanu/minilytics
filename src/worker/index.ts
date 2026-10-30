@@ -8,6 +8,7 @@ import { passwordsMatch, randomId } from './lib/crypto';
 import { handleDodoWebhook, handleGoalApi, handlePaymentApi, handleStripeWebhook, learnDodoProducts, rematchPayments } from './payments';
 import { rememberOwnerDevice } from './owner';
 import { botStats, handleCrawlApi } from './crawls';
+import { handleLiveApi, handleStatsApi } from './statsApi';
 import { breakdown, customers, funnel, makeCtx, overview, realtime, sparklines, visitorProfile, visitors, type FunnelStep } from './stats';
 
 const app = new Hono<AppEnv>();
@@ -23,6 +24,8 @@ app.post('/api/webhooks/stripe/:siteId', handleStripeWebhook);
 app.post('/api/v1/payments', handlePaymentApi);
 app.post('/api/v1/goals', handleGoalApi);
 app.post('/api/v1/crawls', handleCrawlApi);
+app.get('/api/v1/live', handleLiveApi);
+app.get('/api/v1/stats', handleStatsApi);
 
 // ---------- login
 
@@ -220,7 +223,7 @@ app.post('/api/sites/:id/rotate-key', async (c) => {
 app.delete('/api/sites/:id', async (c) => {
   const id = c.get('site').id;
   await c.env.DB.batch(
-    ['events', 'sessions', 'visitors', 'payments', 'funnels', 'bot_hits'].map((t) =>
+    ['events', 'sessions', 'visitors', 'payments', 'funnels', 'bot_hits', 'api_cache'].map((t) =>
       c.env.DB.prepare(`DELETE FROM ${t} WHERE site_id = ?`).bind(id),
     ).concat(c.env.DB.prepare('DELETE FROM sites WHERE id = ?').bind(id)),
   );
