@@ -190,6 +190,20 @@ monitoring. Crawlers that do run the script (like Googlebot's renderer) are coun
 hour, bot and page, so heavy crawling stays small. Bot names come from the user agent and can be faked.
 People who click through from ChatGPT, Claude or Perplexity are regular visitors, under Channel → AI.
 
+### Stats API
+
+Read your numbers from your own servers with the site's API key (Settings → **Stats API**):
+
+```bash
+curl https://YOUR-HOST/api/v1/stats -H "Authorization: Bearer ml_..."     # live + today + this month
+curl "https://YOUR-HOST/api/v1/stats?period=7d" -H "Authorization: Bearer ml_..."  # also any dashboard period
+curl https://YOUR-HOST/api/v1/live -H "Authorization: Bearer ml_..."      # only who's on the site now
+```
+
+`live` has visitors on the site in the last 5 minutes, grouped by country, city, page, source and device. `today` and `month`
+have visitors, sessions and pageviews since midnight / the 1st in the site's timezone. Results are cached (live 10 s, today 1 min,
+month 10 min) so frequent polling stays on the free plan. The key can also record payments, so only use it server-side.
+
 ### Tracking a specific tweet / article
 
 X, Medium, LinkedIn and others hide which exact post sent someone; the referrer only says `t.co` or `medium.com`.
